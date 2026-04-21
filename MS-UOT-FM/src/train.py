@@ -216,7 +216,7 @@ def multiscale_train(
     hold_one_out=False, # 是否留一法评估（留出一个时间点不训练）
     hold_out="random",  # 留出的时间点标识
     logger=None,        # 日志对象（用于记录训练进度）
-    device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),  # 计算设备
+    device=torch.device("cuda:2" if torch.cuda.is_available() else "cpu"),  # 计算设备
     save_dir=None,      # 模型保存路径（预留）
     relative_mass=None, # 各时间点相对质量参考（用于质量正则）
     delta=1.0,          # 【关键】WFR度量中的增长惩罚系数δ

@@ -111,7 +111,7 @@ def sample_from_ot_plan(ot_plan,  # WFR-OET coupling
                         sampling_info=None):  # mini-batch OET的分组信息
 
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
     if sampling_info is None:
         pi_cuda = torch.from_numpy(ot_plan.astype(np.float32)).to(device)
@@ -225,7 +225,7 @@ def get_batch(X,
     massts = []
 
     # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
     for t in range(len(t_train) - 1):
 
@@ -328,508 +328,6 @@ CLZ:
 此处开始为我们的 Multiscale OT 新增内容
 """
 ###############################################################################################
-
-"""
-def compute_uot_sparse(
-        a,
-        b,
-        M,
-        reg_m,
-        c=None,
-        reg=0,
-        div="kl",
-        G0=None,
-        numItermax=1000,
-        stopThr=1e-15,
-        verbose=False,
-        log=False,
-):
-
-    # CLZ:
-    # 此函数用于支持 稀疏计算 unbalance ot
-
-    # 1. 检测是否为稀疏矩阵
-    is_sparse = sparse.issparse(M)
-
-    # 统一转换为 numpy 数组处理向量
-    a = np.asarray(a).flatten()
-    b = np.asarray(b).flatten()
-
-    dim_a, dim_b = M.shape
-
-    # 处理空分布
-    if len(a) == 0:
-        a = np.ones(dim_a) / dim_a
-    if len(b) == 0:
-        b = np.ones(dim_b) / dim_b
-
-    # 获取参数
-    reg_m1, reg_m2 = get_parameter_pair(reg_m)
-
-    # ================= 稀疏矩阵专用逻辑 =================
-    if is_sparse:
-        # 确保 M 是 COO 格式以便于访问 row, col, data
-        if not sparse.isspmatrix_coo(M):
-            M = M.tocoo()
-
-        # 初始化 G (与 M 具有相同的稀疏结构)
-        if G0 is None:
-            G_data = a[M.row] * b[M.col]
-            G = sparse.coo_matrix((G_data, (M.row, M.col)), shape=M.shape)
-        else:
-            if sparse.issparse(G0):
-                G = G0.tocoo()
-            else:
-                G_data = np.asarray(G0)[M.row, M.col]
-                G = sparse.coo_matrix((G_data, (M.row, M.col)), shape=M.shape)
-
-        # 初始化 Log
-        if log:
-            log_dict = {"err": [], "G": []}
-
-        div = div.lower()
-
-        # 预处理参考分布 c
-        if reg > 0:
-            if c is None:
-                c_data = a[M.row] * b[M.col]
-                c = sparse.coo_matrix((c_data, (M.row, M.col)), shape=M.shape)
-            elif sparse.issparse(c):
-                c = c.tocoo()
-            else:
-                c_data = np.asarray(c)[M.row, M.col]
-                c = sparse.coo_matrix((c_data, (M.row, M.col)), shape=M.shape)
-        else:
-            c = None
-
-        # 计算 Kernel K (保持稀疏结构)
-        if div == "kl":
-            sum_r = reg + reg_m1 + reg_m2
-            r1, r2, r = reg_m1 / sum_r, reg_m2 / sum_r, reg / sum_r
-
-            term_a = a[M.row] ** r1
-            term_b = b[M.col] ** r2
-            term_c = c.data ** r if (c is not None and reg > 0) else 1.0
-            term_m = np.exp(-M.data / sum_r)
-
-            K_data = term_a * term_b * term_c * term_m
-            K = sparse.coo_matrix((K_data, (M.row, M.col)), shape=M.shape)
-
-        elif div == "l2":
-            term_a = reg_m1 * a[M.row]
-            term_b = reg_m2 * b[M.col]
-            term_c = reg * c.data if (c is not None and reg > 0) else 0.0
-
-            K_data = term_a + term_b + term_c - M.data
-            K_data = np.maximum(K_data, 0)
-            K = sparse.coo_matrix((K_data, (M.row, M.col)), shape=M.shape)
-        else:
-            raise ValueError("Unknown div = {}. Must be either 'kl' or 'l2'".format(div))
-
-        # 转换为 CSR 格式以加速矩阵运算
-        K = K.tocsr()
-        G = G.tocsr()
-
-        # 迭代优化
-        for i in range(numItermax):
-            Gprev = G
-
-            if div == "kl":
-                # 计算边际 (返回稠密向量)
-                u = np.array(G.sum(axis=1)).flatten() ** r1
-                v = np.array(G.sum(axis=0)).flatten() ** r2
-
-                # G = K * G^(r1+r2) / (u * v)
-                G_power = G.power(r1 + r2)
-                G_temp = K.multiply(G_power)
-
-                # 行列缩放 (避免构建稠密外积)
-                u_safe = np.where(u > 0, 1.0 / u, 0.0)
-                v_safe = np.where(v > 0, 1.0 / v, 0.0)
-
-                # G = sparse.diags(u_safe) @ G_temp
-                # G = G @ sparse.diags(v_safe)
-
-                # 列缩放 (CSR 有 .indices 属性)
-                G_temp.data *= v_safe[G_temp.indices]
-
-                # 行缩放 (需要通过 indptr 构造行索引)
-                if G_temp.nnz > 0:  # 避免空矩阵报错
-                    row_indices = np.repeat(np.arange(dim_a), np.diff(G_temp.indptr))
-                    G_temp.data *= u_safe[row_indices]
-
-                G = G_temp  # G 指向新对象，Gprev 仍指向旧对象
-
-            elif div == "l2":
-                u = np.array(G.sum(axis=1)).flatten()
-                v = np.array(G.sum(axis=0)).flatten()
-
-                # 计算 Gd 的非零元素值
-                Gd_data = reg_m1 * u[G.row] + reg_m2 * v[G.col] + reg * G.data + 1e-16
-
-                # 更新 G.data
-                G.data = K.data * G.data / Gd_data
-                G = sparse.csr_matrix(G)
-
-            # 收敛性检查
-            diff = G - Gprev
-            err = np.sqrt(diff.power(2).sum())
-
-            if log:
-                log_dict["err"].append(err)
-                log_dict["G"].append(G)
-
-            if verbose:
-                print("{:5d}|{:8e}|".format(i, err))
-
-            if err < stopThr:
-                break
-
-        # 计算最终成本
-        if log:
-            linear_cost = G.multiply(M).sum()
-
-            m1 = np.array(G.sum(axis=1)).flatten()
-            m2 = np.array(G.sum(axis=0)).flatten()
-
-            if div == "kl":
-                cost_m1 = np.sum(m1 * np.log(m1 / a + 1e-16) - m1 + a)
-                cost_m2 = np.sum(m2 * np.log(m2 / b + 1e-16) - m2 + b)
-                cost = linear_cost + reg_m1 * cost_m1 + reg_m2 * cost_m2
-                if reg > 0:
-                    mask = G.data > 0
-                    cost_reg = np.sum(
-                        G.data[mask] * np.log(G.data[mask] / (c.data[mask] + 1e-16)) - G.data[mask] + c.data[mask])
-                    cost += reg * cost_reg
-            else:
-                cost = (
-                        linear_cost
-                        + reg_m1 * 0.5 * np.sum((m1 - a) ** 2)
-                        + reg_m2 * 0.5 * np.sum((m2 - b) ** 2)
-                )
-                if reg > 0:
-                    cost += reg * 0.5 * ((G - c).power(2).sum())
-
-            log_dict["cost"] = linear_cost
-            log_dict["total_cost"] = cost
-            return G, log_dict
-        else:
-            return G
-
-    else:
-        # 如果不是稀疏矩阵，回退到原始实现
-        return ot.unbalanced.mm_unbalanced(a, b, M, reg_m, c, reg, div, G0, numItermax, stopThr, verbose, log)
-"""
-
-"""
-def compute_uot_sparse(
-        a,
-        b,
-        M,
-        reg_m,
-        c=None,
-        reg=0,
-        div="kl",
-        G0=None,
-        numItermax=1000,
-        stopThr=1e-15,
-        verbose=False,
-        log=False,
-):
-
-    # 1. 获取统一后端 (自动识别输入所属框架与设备)
-    M, a, b = list_to_array(M, a, b)
-    nx = get_backend(M, a, b)
-
-    is_sparse = sparse.issparse(M) or (isinstance(M, torch.Tensor) and M.is_sparse)
-
-    dim_a, dim_b = M.shape
-
-    if len(a) == 0:
-        a = nx.ones(dim_a, type_as=M) / dim_a
-    if len(b) == 0:
-        b = nx.ones(dim_b, type_as=M) / dim_b
-
-    if reg > 0:  # regularized case
-        c = a[:, None] * b[None, :] if c is None else c
-    else:  # unregularized case
-        c = 0
-
-    reg_m1, reg_m2 = get_parameter_pair(reg_m)
-
-    # ================= 稀疏矩阵专用逻辑 =================
-    if is_sparse:
-
-        M = M.coalesce()  # 确保索引规范
-        row_idx, col_idx = M.indices()[0], M.indices()[1]
-
-        if G0 is None:
-            # 按 M 的非零结构初始化 G，值设为边际外积 a[i]*b[j]
-            init_vals = a[row_idx] * b[col_idx]
-            G = torch.sparse_coo_tensor(torch.stack([row_idx, col_idx]), init_vals, M.shape)
-        else:
-            if G0.is_sparse:
-                G = G0.coalesce()
-            else:
-                # 若传入的 G0 是稠密张量，按 M 的索引提取值转为稀疏
-                G = torch.sparse_coo_tensor(torch.stack([row_idx, col_idx]), G0[row_idx, col_idx], M.shape)
-
-        G = G.coalesce()
-
-        if log:
-            log_dict = {"err": [], "G": []}
-
-        div = div.lower()
-
-        if reg > 0:
-            if c is None:
-                c_data = a[M.row] * b[M.col]
-                c = sparse.coo_matrix((c_data, (M.row, M.col)), shape=M.shape)
-            elif sparse.issparse(c):
-                c = c.tocoo()
-            else:
-                c_data = nx.asarray(c)[M.row, M.col]
-                c = sparse.coo_matrix((c_data, (M.row, M.col)), shape=M.shape)
-        else:
-            c = None
-
-        # 1. 确保 M 是 coalesced 状态（索引有序且无重复），并提取行列索引与值
-        M = M.coalesce()
-        row_idx = M.indices()[0]  # shape: (nnz,)
-        col_idx = M.indices()[1]  # shape: (nnz,)
-        m_vals  = M.values()      # shape: (nnz,)
-
-        # 安全提取 c 的值（兼容稀疏/稠密/None）
-        c_val = c.values() if (c is not None and c.is_sparse) else c
-
-        if div == "kl":
-            sum_r = reg + reg_m1 + reg_m2
-            r1, r2, r = reg_m1 / sum_r, reg_m2 / sum_r, reg / sum_r
-
-            term_a = a[row_idx] ** r1
-            term_b = b[col_idx] ** r2
-            term_c = c_val ** r if (c is not None and reg > 0) else 1.0
-            term_m = torch.exp(-m_vals / sum_r)
-
-            K_data = term_a * term_b * term_c * term_m
-            K = torch.sparse_coo_tensor(torch.stack([row_idx, col_idx]), K_data, M.shape)
-
-            K = K.coalesce() 
-
-        elif div == "l2":
-            term_a = reg_m1 * a[row_idx]
-            term_b = reg_m2 * b[col_idx]
-            term_c = reg * c_val if (c is not None and reg > 0) else 0.0
-
-            K_data = term_a + term_b + term_c - m_vals
-            K_data = torch.clamp(K_data, min=0.0)  # 替代 nx.maximum(K_data, 0)
-
-            K = torch.sparse_coo_tensor(torch.stack([row_idx, col_idx]), K_data, M.shape)
-
-            K = K.coalesce() 
-
-        else:
-            raise ValueError("Unknown div = {}. Must be either 'kl' or 'l2'".format(div))
-        
-
-        for i in range(numItermax):
-            Gprev = G
-
-            # 强制稠密边际向量（解决 layout 冲突）
-            device = G.device
-            dtype = G.values().dtype
-            m1 = torch.zeros(dim_a, dtype=dtype, device=device)
-            m2 = torch.zeros(dim_b, dtype=dtype, device=device)
-
-            if div == "kl":
-                m1 = m1.index_add_(0, G.indices()[0], G.values())  # 按行索引聚合
-                m2 = m2.index_add_(0, G.indices()[1], G.values())  # 按列索引聚合
-
-                u = m1 ** r1
-                v = m2 ** r2
-                G_power = G.values() ** (r1 + r2)
-                G_temp = K.values() * G_power
-                u_safe = nx.where(u > 0, 1.0 / u, 0.0)
-                v_safe = nx.where(v > 0, 1.0 / v, 0.0)
-                
-                # COO 结构已固定，直接通过索引对齐广播
-                row_indices = G.indices()[0]
-                col_indices = G.indices()[1]
-                G_temp = G_temp * v_safe[col_indices]
-                G_temp = G_temp * u_safe[row_indices]
-                G = torch.sparse_coo_tensor(G.indices(), G_temp, G.shape).coalesce()
-
-            elif div == "l2":
-                m1 = m1.index_add_(0, G.indices()[0], G.values())  # 按行索引聚合
-                m2 = m2.index_add_(0, G.indices()[1], G.values())  # 按列索引聚合
-
-                row_indices = G.indices()[0]
-                col_indices = G.indices()[1]
-                Gd_data = reg_m1 * m1[row_indices] + reg_m2 * m2[col_indices] + reg * G.values() + 1e-16
-                G = torch.sparse_coo_tensor(G.indices(), K.values() * G.values() / Gd_data, G.shape).coalesce()
-
-            diff = G.values() - Gprev.values()
-            err = nx.sqrt(nx.sum(diff ** 2))
-
-            if log:
-                log_dict["err"].append(err)
-                log_dict["G"].append(G)
-            if verbose:
-                print("{:5d}|{:8e}|".format(i, err))
-            if err < stopThr:
-                break
-
-        if log:
-            linear_cost = nx.sum(G.values() * M.values())
-            m1 = m1.index_add_(0, G.indices()[0], G.values())  # 按行索引聚合
-            m2 = m2.index_add_(0, G.indices()[1], G.values())  # 按列索引聚合
-
-            if div == "kl":
-                cost_m1 = nx.sum(m1 * nx.log(m1 / a + 1e-16) - m1 + a)
-                cost_m2 = nx.sum(m2 * nx.log(m2 / b + 1e-16) - m2 + b)
-                cost = linear_cost + reg_m1 * cost_m1 + reg_m2 * cost_m2
-                if reg > 0:
-                    mask = G.values() > 0
-                    c_val = c.values() if (c is not None and c.is_sparse) else c
-                    cost_reg = nx.sum(
-                        G.values()[mask] * nx.log(G.values()[mask] / (c_val[mask] + 1e-16)) - G.values()[mask] + c_val[mask])
-                    cost += reg * cost_reg
-            else:
-                cost = (
-                        linear_cost
-                        + reg_m1 * 0.5 * nx.sum((m1 - a) ** 2)
-                        + reg_m2 * 0.5 * nx.sum((m2 - b) ** 2)
-                )
-                if reg > 0:
-                    c_val = c.values() if (c is not None and c.is_sparse) else c
-                    cost += reg * 0.5 * nx.sum((G.values() - c_val) ** 2)
-
-            log_dict["cost"] = linear_cost
-            log_dict["total_cost"] = cost
-            return G, log_dict
-        else:
-            return G
-
-    else:
-        # 稠密情况回退到原版
-        return ot.unbalanced.mm_unbalanced(a, b, M, reg_m, c, reg, div, G0, numItermax, stopThr, verbose, log)
-"""
-
-
-"""
-def compute_uot_sparse(
-    a,
-    b,
-    M,
-    reg_m,
-    c=None,
-    reg=0,
-    div="kl",
-    G0=None,
-    numItermax=1000,
-    stopThr=1e-15,
-    verbose=False,
-    log=False,
-):
-    from ot.backend import get_backend
-    from ot.utils import get_parameter_pair
-    import numpy as np
-    from scipy import sparse
-
-    assert sparse.issparse(M), "This version expects sparse M"
-
-    if not sparse.isspmatrix_coo(M):
-        M = M.tocoo()
-
-    row = M.row
-    col = M.col
-    dim_a, dim_b = M.shape
-
-    # backend
-    nx = get_backend(a, b, M.data)
-
-    a = nx.asarray(a)
-    b = nx.asarray(b)
-
-    reg_m1, reg_m2 = get_parameter_pair(reg_m)
-
-    # ===== 初始化 G =====
-    if G0 is None:
-        G_data = a[row] * b[col]
-    else:
-        G_data = nx.asarray(G0.data)
-
-    # ===== Kernel K =====
-    if div == "kl":
-        sum_r = reg + reg_m1 + reg_m2
-        r1, r2, r = reg_m1 / sum_r, reg_m2 / sum_r, reg / sum_r
-
-        M_data = nx.asarray(M.data)
-
-        K_data = (
-            (a[row] ** r1)
-            * (b[col] ** r2)
-            * nx.exp(-M_data / sum_r)
-        )
-
-    elif div == "l2":
-        M_data = nx.asarray(M.data)
-
-        K_data = (
-            reg_m1 * a[row]
-            + reg_m2 * b[col]
-            - M_data
-        )
-        K_data = nx.maximum(K_data, 0)
-
-    else:
-        raise ValueError("Unknown div")
-
-    # ===== iteration =====
-    for i in range(numItermax):
-        G_prev = G_data
-
-        # ===== marginals =====
-        u = nx.zeros(dim_a, type_as=G_data)
-        v = nx.zeros(dim_b, type_as=G_data)
-
-        # scatter add
-        nx.scatter_add(u, row, G_data)
-        nx.scatter_add(v, col, G_data)
-
-        if div == "kl":
-            u = u ** r1
-            v = v ** r2
-
-            G_power = G_data ** (r1 + r2)
-
-            denom = (u[row] * v[col]) + 1e-16
-            G_data = K_data * G_power / denom
-
-        elif div == "l2":
-            denom = (
-                reg_m1 * u[row]
-                + reg_m2 * v[col]
-                + reg * G_data
-                + 1e-16
-            )
-            G_data = K_data * G_data / denom
-
-        # ===== error =====
-        err = nx.sqrt(nx.sum((G_data - G_prev) ** 2))
-
-        if verbose:
-            print(f"{i:5d}|{err:8e}|")
-
-        if err < stopThr:
-            break
-
-    # ===== 返回 sparse =====
-    from scipy.sparse import coo_matrix
-    G = coo_matrix((nx.to_numpy(G_data), (row, col)), shape=(dim_a, dim_b))
-
-    return G
-"""
 
 
 def compute_uot_sparse(
@@ -1117,146 +615,162 @@ def get_micro_idx_to_point_indices(df, micro_ids_order, cluster_col='scale1'):
     return idx_map
 
 
+def get_scale_columns(df):
+    """
+    CLZ:
+    自动获取 data 中的尺度
+    """
+    return sorted([col for col in df.columns if col.startswith("scale")],
+                  key=lambda x: int(x.replace("scale", "")))
+
+
+"""
 def compute_multiscale_wfr_oet_coupling_sparse(
         x_source, x_target,
         df_src, df_tgt,
         delta=1.0,
         reg_m=[1.0, 1.0],
+        independent = None
 ):
-    """
-    CLZ:
-    多尺度稀疏 WFR-OET 耦合计算主函数
-    核心流程: 粗层全连接求解 → 阈值剪枝 → 稀疏代价矩阵组装 → 逐层细化 → 最终点级稀疏求解
-    返回: G_points (点级耦合矩阵 [n_src, n_tgt]), sampling_info (供后续采样使用)
-    """
-    print("Starting hierarchical WFR-OET solving...")
 
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Starting hierarchical WFR-OET solving (auto scales)...")
+
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
-    #######################################################################################################
-    print("--- Running Level 1: Macro Scale OT ---")
+    # =========================
+    # 1. 自动获取 scale 列
+    # =========================
+    scale_cols = sorted(
+        [c for c in df_src.columns if c.startswith("scale")],
+        key=lambda x: int(x.replace("scale", ""))
+    )
 
-    # 获取 macro 质心和权重
-    C_macro_src, w_macro_src, macro_ids_src = get_cluster(df_src, 'scale0')
-    C_macro_tgt, w_macro_tgt, macro_ids_tgt = get_cluster(df_tgt, 'scale0')
-    M_macro = compute_wfr_oet_cost_matrix(C_macro_src, C_macro_tgt, delta)
+    n_scales = len(scale_cols)
+    print(f"Detected {n_scales} scales:", scale_cols)
 
-    start_time = time.perf_counter()
+    # =========================
+    # 2. 存储每层结果
+    # =========================
+    gammas = []           # 每一层 coupling
+    cluster_ids_list = [] # 每层 cluster ids
+    centers_list = []
+    weights_list = []
 
-    # 求解 macro ot
-    gamma_macro = ot.unbalanced.mm_unbalanced(w_macro_src, w_macro_tgt, M_macro, reg_m=reg_m)
-    # gamma_macro = ot.unbalanced.mm_unbalanced(w_macro_src_cuda, w_macro_tgt_cuda, M_macro_cuda, reg_m=reg_m)
+    # =========================
+    # 3. 逐层计算 OT
+    # =========================
+    prev_gamma = None
 
-    end_time = time.perf_counter()
-    elapsed_time = end_time - start_time
-    print(f"macro ot 代码运行耗时: {elapsed_time:.6f} 秒")
+    for level, scale_col in enumerate(scale_cols):
+        print(f"--- Running Level {level}: {scale_col} ---")
 
-    print("Macro Transport Plan:\n", np.round(gamma_macro, 3))
+        C_src, w_src, ids_src = get_cluster(df_src, scale_col)
+        C_tgt, w_tgt, ids_tgt = get_cluster(df_tgt, scale_col)
 
-    #######################################################################################################
-    print("\n--- Running Level 2: Micro Scale OT (Sparse COO) ---")
+        M = compute_wfr_oet_cost_matrix(C_src, C_tgt, delta)
 
-    # 利用提供的辅助函数获取数据
-    C_micro_src, w_micro_src, micro_ids_src = get_cluster(df_src, 'scale1')
-    C_micro_tgt, w_micro_tgt, micro_ids_tgt = get_cluster(df_tgt, 'scale1')
+        # =========================
+        # 关键：剪枝（不是第一层）
+        # =========================
+        if prev_gamma is not None:
+            threshold = 1e-8
 
-    M_micro = compute_wfr_oet_cost_matrix(C_micro_src, C_micro_tgt, delta)
+            # 构建当前层 → 上一层的映射
+            parent_col = scale_cols[level - 1]
 
-    # 我们需要知道每个 micro_cluster 属于哪个 macro_cluster
-    # 创建映射: micro_id -> macro_id
-    micro_to_macro_src = df_src.groupby('scale1')['scale0'].first().to_dict()
-    micro_to_macro_tgt = df_tgt.groupby('scale1')['scale0'].first().to_dict()
+            src_parent = df_src.groupby(scale_col)[parent_col].first().to_dict()
+            tgt_parent = df_tgt.groupby(scale_col)[parent_col].first().to_dict()
 
-    # 遍历 Micro Cost Matrix 的每一个元素
-    # 如果对应的 Macro Parent 之间传输量为 0，则将 Micro Cost 设为无穷大
-    threshold = 1e-8  # 判定为 0 的阈值
+            for i, cid_src in enumerate(ids_src):
+                p_src = src_parent[cid_src]
+                for j, cid_tgt in enumerate(ids_tgt):
+                    p_tgt = tgt_parent[cid_tgt]
 
-    for i, m_src in enumerate(micro_ids_src):
-        parent_src = micro_to_macro_src[m_src]
-        for j, m_tgt in enumerate(micro_ids_tgt):
-            parent_tgt = micro_to_macro_tgt[m_tgt]
-            # 检查上一层级 (Macro) 是否允许传输
-            # 注意：这里假设 macro_ids 也是 0, 1 顺序排列的
-            if gamma_macro[parent_src, parent_tgt] < threshold:
-                M_micro[i, j] = np.inf
+                    if prev_gamma[p_src, p_tgt] < threshold:
+                        M[i, j] = np.inf
 
-    start_time = time.perf_counter()
+        # =========================
+        # 求解 OT
+        # =========================
+        start_time = time.perf_counter()
 
-    gamma_micro = ot.unbalanced.mm_unbalanced(w_micro_src, w_micro_tgt, M_micro, reg_m=reg_m)
+        gamma = ot.unbalanced.mm_unbalanced(w_src, w_tgt, M, reg_m=reg_m)
 
-    end_time = time.perf_counter()
-    elapsed_time = end_time - start_time
-    print(f"micro ot 代码运行耗时: {elapsed_time:.6f} 秒")
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        print(f"Level {level} 运行耗时: {elapsed_time:.6f} 秒")
 
-    # 可视化 Level 2 的矩阵 (看看是否有些块被禁用了)
-    plt.figure(figsize=(6, 5))
-    plt.imshow(gamma_micro, cmap='hot', interpolation='nearest')
-    plt.title("Level 2 (Micro) Transport Plan")
-    plt.xlabel("Target Micro Clusters")
-    plt.ylabel("Source Micro Clusters")
-    plt.colorbar()
-    plt.savefig("/home1/clz/北大/MS-UOT-FM/results/micro_transport_plan.png", bbox_inches='tight', dpi=600)
+        print(f"Level {level} done. Nonzero: {(gamma>1e-8).sum()}")
 
-    #######################################################################################################
-    print("\n--- Running Level 3: Point Scale OT (Sparse COO) ---")
+        # 可视化 Level 矩阵 (看看是否有些块被禁用了)
+        save_dir = "/home1/clz/北大/MS-UOT-FM/results/multiscale_2d_test/multiscale_plan"
+        os.makedirs(save_dir, exist_ok=True)
+        scale_name = scale_cols[level]
+
+        plt.figure(figsize=(6, 5))
+        plt.imshow(gamma, cmap='hot', interpolation='nearest')
+        plt.title(f"Transport Plan - Level {level} ({scale_name})")
+        plt.xlabel(f"Target Clusters ({scale_name})")
+        plt.ylabel(f"Source Clusters ({scale_name})")
+        plt.colorbar()
+        save_path = os.path.join(save_dir, f"transport_plan_level{level}_{scale_name}.png")
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.close()
+
+        gammas.append(gamma)
+        cluster_ids_list.append((ids_src, ids_tgt))
+        centers_list.append((C_src, C_tgt))
+        weights_list.append((w_src, w_tgt))
+
+        prev_gamma = gamma
+
+    # =========================
+    # Final Level → Point（严格等价版）
+    # =========================
+    print("--- Running Final Point Scale (Sparse COO) ---")
 
     X_src, X_tgt = x_source, x_target
-    n_src, n_tgt = x_source.shape[0], x_target.shape[0]
+    n_src, n_tgt = X_src.shape[0], X_tgt.shape[0]
 
     a = np.ones(n_src)
     b = np.ones(n_tgt)
 
-    w_points_src = a
-    w_points_tgt = b
+    # 必须保证顺序完全一致（关键）
+    micro_ids_src, micro_ids_tgt = cluster_ids_list[-1]
 
-    # 利用 Level 2 输出的 micro_ids_src/tgt 列表保持顺序一致
-    map_micro_to_pts_src = get_micro_idx_to_point_indices(df_src, micro_ids_src)
-    map_micro_to_pts_tgt = get_micro_idx_to_point_indices(df_tgt, micro_ids_tgt)
+    map_micro_to_pts_src = get_micro_idx_to_point_indices(df_src, micro_ids_src, cluster_col=scale_cols[-1])
+    map_micro_to_pts_tgt = get_micro_idx_to_point_indices(df_tgt, micro_ids_tgt, cluster_col=scale_cols[-1])
 
-    # 构建稀疏成本矩阵
     threshold = 1e-8
-    # 找出上一层级允许传输的连接 (u, v)
-    active_micro_pairs = np.argwhere(gamma_micro > threshold)
+    active_micro_pairs = np.argwhere(gammas[-1] > threshold)
 
-    rows = []  # 记录全局 Point Src 索引
-    cols = []  # 记录全局 Point Tgt 索引
-    data = []  # 记录 欧氏距离
+    rows, cols, data = [], [], []
 
     for m_src_idx, m_tgt_idx in active_micro_pairs:
-        # 1. 获取该 Micro Cluster 包含的所有点的索引
+
         src_pt_indices = map_micro_to_pts_src.get(m_src_idx, [])
         tgt_pt_indices = map_micro_to_pts_tgt.get(m_tgt_idx, [])
 
         if len(src_pt_indices) == 0 or len(tgt_pt_indices) == 0:
             continue
 
-        # 2. 提取坐标块 (Block Extraction)
-        # shape: (N_sub_src, D)
         block_X_src = X_src[src_pt_indices]
-        # shape: (N_sub_tgt, D)
         block_X_tgt = X_tgt[tgt_pt_indices]
 
-        # 3. 计算块内距离 (Vectorized)
-        # shape: (N_sub_src, N_sub_tgt)
         dists = compute_wfr_oet_cost_matrix(block_X_src, block_X_tgt, delta)
 
-        # 4. 生成全局坐标并存储
-        # grid_r: 全局源点索引, grid_c: 全局目标点索引
         grid_r, grid_c = np.meshgrid(src_pt_indices, tgt_pt_indices, indexing='ij')
 
         rows.append(grid_r.flatten())
         cols.append(grid_c.flatten())
         data.append(dists.flatten())
 
-    # 合并并构建 COO 矩阵
+    # ===== COO 构建 =====
     if data:
         all_rows = np.concatenate(rows)
         all_cols = np.concatenate(cols)
         all_data = np.concatenate(data)
 
-        # M_points_sparse 只包含允许传输的路径的 Cost
-        # 未存储的位置在 OT 求解时会被视为禁区 (或需要在求解器中处理)
         M_points_sparse = sparse.coo_matrix(
             (all_data, (all_rows, all_cols)),
             shape=(n_src, n_tgt)
@@ -1270,9 +784,9 @@ def compute_multiscale_wfr_oet_coupling_sparse(
 
     print("Solving final point-wise OT with Sparse Matrix...")
 
-    # GPU加速
-    w_points_src_cuda = torch.from_numpy(w_points_src).to(device)
-    w_points_tgt_cuda = torch.from_numpy(w_points_tgt).to(device)
+    # ===== GPU =====
+    w_points_src_cuda = torch.from_numpy(a).to(device)
+    w_points_tgt_cuda = torch.from_numpy(b).to(device)
 
     indices = torch.from_numpy(np.vstack((M_points_sparse.row, M_points_sparse.col))).long().to(device)
     values  = torch.from_numpy(M_points_sparse.data).to(device)
@@ -1280,12 +794,226 @@ def compute_multiscale_wfr_oet_coupling_sparse(
 
     start_time = time.perf_counter()
 
-    gamma_points = compute_uot_sparse(w_points_src_cuda, w_points_tgt_cuda, M_points_sparse_cuda, reg_m=reg_m)
+    gamma_points = compute_uot_sparse(
+        w_points_src_cuda, w_points_tgt_cuda,
+        M_points_sparse_cuda, reg_m=reg_m
+    )
 
     end_time = time.perf_counter()
     print(f"point ot 代码运行耗时: {end_time - start_time:.6f} 秒")
 
     return gamma_points
+"""
+
+
+def compute_multiscale_wfr_oet_coupling_sparse(
+        x_source, x_target,
+        df_src, df_tgt,
+        delta=1.0,
+        reg_m=[1.0, 1.0],
+        independent=True,  # 控制 exact MS-UOT/independent MS-UOT
+):
+    """
+    CLZ:
+    多尺度稀疏 WFR-OET 耦合计算主函数
+    核心流程: 粗层全连接求解 → 阈值剪枝 → 稀疏代价矩阵组装 → 逐层细化 → 最终点级稀疏求解
+    返回: G_points (点级耦合矩阵 [n_src, n_tgt]), sampling_info (供后续采样使用)
+    """
+
+    print("Starting hierarchical WFR-OET solving (auto scales)...")
+
+    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+
+    # =========================
+    # 1. 自动获取 scale 列
+    # =========================
+    scale_cols = sorted(
+        [c for c in df_src.columns if c.startswith("scale")],
+        key=lambda x: int(x.replace("scale", ""))
+    )
+
+    n_scales = len(scale_cols)
+    print(f"Detected {n_scales} scales:", scale_cols)
+
+    # =========================
+    # 2. 存储每层结果
+    # =========================
+    gammas = []
+    cluster_ids_list = []
+    centers_list = []
+    weights_list = []
+
+    # =========================
+    # 3. 逐层计算 OT
+    # =========================
+    prev_gamma = None
+
+    for level, scale_col in enumerate(scale_cols):
+        print(f"\n--- Running Level {level}: {scale_col} ---")
+
+        C_src, w_src, ids_src = get_cluster(df_src, scale_col)
+        C_tgt, w_tgt, ids_tgt = get_cluster(df_tgt, scale_col)
+
+        M = compute_wfr_oet_cost_matrix(C_src, C_tgt, delta)
+
+        if prev_gamma is not None:
+            threshold = 1e-8
+            parent_col = scale_cols[level - 1]
+
+            src_parent = df_src.groupby(scale_col)[parent_col].first().to_dict()
+            tgt_parent = df_tgt.groupby(scale_col)[parent_col].first().to_dict()
+
+            for i, cid_src in enumerate(ids_src):
+                p_src = src_parent[cid_src]
+                for j, cid_tgt in enumerate(ids_tgt):
+                    p_tgt = tgt_parent[cid_tgt]
+
+                    if prev_gamma[p_src, p_tgt] < threshold:
+                        M[i, j] = np.inf
+
+        start_time = time.perf_counter()
+
+        gamma = ot.unbalanced.mm_unbalanced(w_src, w_tgt, M, reg_m=reg_m)
+        
+        end_time = time.perf_counter()
+        print(f"Level {level} 运行耗时: {end_time - start_time:.6f} 秒")
+
+        print(f"Level {level} done. Nonzero: {(gamma>1e-8).sum()}")
+
+        # 可视化 Level 矩阵 (看看是否有些块被禁用了)
+        save_dir = "/home1/clz/北大/MS-UOT-FM/results/multiscale_2d_test/multiscale_plan"
+        os.makedirs(save_dir, exist_ok=True)
+        scale_name = scale_cols[level]
+        plt.figure(figsize=(6, 5))
+        plt.imshow(gamma, cmap='hot', interpolation='nearest')
+        plt.title(f"Transport Plan - Level {level} ({scale_name})")
+        plt.xlabel(f"Target Clusters ({scale_name})")
+        plt.ylabel(f"Source Clusters ({scale_name})")
+        plt.colorbar()
+        save_path = os.path.join(save_dir, f"transport_plan_level{level}_{scale_name}.png")
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.close()
+
+        gammas.append(gamma)
+        cluster_ids_list.append((ids_src, ids_tgt))
+        prev_gamma = gamma
+
+    # =========================
+    # Final Level
+    # =========================
+    print("\n--- Running Final Point Scale ---")
+
+    X_src, X_tgt = x_source, x_target
+    n_src, n_tgt = X_src.shape[0], X_tgt.shape[0]
+
+    micro_ids_src, micro_ids_tgt = cluster_ids_list[-1]
+
+    map_src = get_micro_idx_to_point_indices(df_src, micro_ids_src, cluster_col=scale_cols[-1])
+    map_tgt = get_micro_idx_to_point_indices(df_tgt, micro_ids_tgt, cluster_col=scale_cols[-1])
+
+    threshold = 1e-8
+    active_pairs = np.argwhere(gammas[-1] > threshold)
+
+    rows, cols, data = [], [], []
+
+    # =========================================================
+    # Option 1：Exact Sparse OET
+    # =========================================================
+    if not independent:
+
+        print("Using Exact Sparse OET at point level")
+
+        for m_src_idx, m_tgt_idx in active_pairs:
+
+            src_pts = map_src.get(m_src_idx, [])
+            tgt_pts = map_tgt.get(m_tgt_idx, [])
+
+            if len(src_pts) == 0 or len(tgt_pts) == 0:
+                continue
+
+            block_X_src = X_src[src_pts]
+            block_X_tgt = X_tgt[tgt_pts]
+
+            dists = compute_wfr_oet_cost_matrix(block_X_src, block_X_tgt, delta)
+
+            grid_r, grid_c = np.meshgrid(src_pts, tgt_pts, indexing='ij')
+
+            rows.append(grid_r.flatten())
+            cols.append(grid_c.flatten())
+            data.append(dists.flatten())
+
+        if data:
+            all_rows = np.concatenate(rows)
+            all_cols = np.concatenate(cols)
+            all_data = np.concatenate(data)
+
+            M_sparse = sparse.coo_matrix(
+                (all_data, (all_rows, all_cols)),
+                shape=(n_src, n_tgt)
+            )
+        else:
+            M_sparse = sparse.coo_matrix((n_src, n_tgt))
+
+        w_src = torch.ones(n_src, device=device)
+        w_tgt = torch.ones(n_tgt, device=device)
+
+        indices = torch.from_numpy(np.vstack((M_sparse.row, M_sparse.col))).long().to(device)
+        values = torch.from_numpy(M_sparse.data).to(device)
+        M_sparse_cuda = torch.sparse_coo_tensor(indices, values, M_sparse.shape, device=device).coalesce()
+
+        start_time = time.perf_counter()
+
+        gamma_points = compute_uot_sparse(w_src, w_tgt, M_sparse_cuda, reg_m=reg_m)
+
+        end_time = time.perf_counter()
+        print(f"point ot 代码运行耗时: {end_time - start_time:.6f} 秒") 
+
+        return gamma_points
+
+    # =========================================================
+    # Option 2：Scalable Heuristic
+    # =========================================================
+    else:
+
+        print("Using Scalable Heuristic at point level")
+
+        for m_src_idx, m_tgt_idx in active_pairs:
+
+            src_pts = map_src.get(m_src_idx, [])
+            tgt_pts = map_tgt.get(m_tgt_idx, [])
+
+            if len(src_pts) == 0 or len(tgt_pts) == 0:
+                continue
+
+            n_s = len(src_pts)
+            n_t = len(tgt_pts)
+
+            # mass-weighted factorization
+            gamma_micro = gammas[-1]
+            val = gamma_micro[m_src_idx, m_tgt_idx] / (n_s * n_t)
+
+            grid_r, grid_c = np.meshgrid(src_pts, tgt_pts, indexing='ij')
+
+            rows.append(grid_r.flatten())
+            cols.append(grid_c.flatten())
+            data.append(np.full(n_s * n_t, val))
+
+        if data:
+            all_rows = np.concatenate(rows)
+            all_cols = np.concatenate(cols)
+            all_data = np.concatenate(data)
+
+            indices = torch.from_numpy(
+                np.vstack((all_rows, all_cols))
+            ).long().to(device)
+
+            values = torch.from_numpy(all_data).float().to(device)
+
+            gamma_points = torch.sparse_coo_tensor(indices, values, (n_src, n_tgt), device=device).coalesce()
+        else:
+            gamma_points = torch.sparse_coo_tensor(torch.zeros((2,0), dtype=torch.long, device=device), torch.zeros(0, device=device), (n_src, n_tgt))
+
+        return gamma_points
 
 
 def compute_multiscale_uot_plans(df, X, t_train, delta=1, use_mini_batch_uot=False, chunk_size=1000):
@@ -1298,7 +1026,7 @@ def compute_multiscale_uot_plans(df, X, t_train, delta=1, use_mini_batch_uot=Fal
     gamma1_plans = []
     sampling_info_plans = []
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
     total_action = 0
 
     for i in tqdm(range(len(t_train) - 1), desc="Computing UOT plans..."):
@@ -1449,7 +1177,7 @@ def sample_from_ot_plan_sparse(ot_plan, x0, x1, batch_size, sampling_info=None):
     x0_batch = x0.index_select(0, i)
     x1_batch = x1.index_select(0, j)
 
-    return x0_batch, x1_batch, i, j
+    return x0_batch, x1_batch, i, j, k_samples
 
 
 def get_batch_sparse(X,
@@ -1467,8 +1195,7 @@ def get_batch_sparse(X,
     gts = []
     massts = []
 
-    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
     for t in range(len(t_train) - 1):
 
@@ -1479,17 +1206,16 @@ def get_batch_sparse(X,
         sampling_info = sampling_info_plans[t]
 
         # 从 γ₀ 采样条件对 (x₀, x₁)
-        x0, x1, idx_0, idx_1 = sample_from_ot_plan_sparse(gamma0_plan, X[t], X[t + 1], batch_size, sampling_info)
+        x0, x1, idx_0, idx_1, k_samples = sample_from_ot_plan_sparse(gamma0_plan, X[t], X[t + 1], batch_size, sampling_info)
 
         # 获取端点质量: mass₀=γ₀(x₀,x₁), mass₁=γ₁(x₀,x₁)
         # mass0 = torch.from_numpy(gamma0_plan[idx_0, idx_1].reshape(-1, 1)).float().to(device)
         # mass1 = torch.from_numpy(gamma1_plan[idx_0, idx_1].reshape(-1, 1)).float().to(device)
+        values0 = gamma0_plan._values().float()
+        values1 = gamma1_plan._values().float()
 
-        gamma0_plan_dense = gamma0_plan.to_dense()
-        gamma1_plan_dense = gamma1_plan.to_dense()
-
-        mass0 = gamma0_plan_dense[idx_0, idx_1].to(device).float().unsqueeze(-1)
-        mass1 = gamma1_plan_dense[idx_0, idx_1].to(device).float().unsqueeze(-1)    
+        mass0 = values0[k_samples].unsqueeze(-1)
+        mass1 = values1[k_samples].unsqueeze(-1)
 
         # 计算时间间隔和随机相对时间
         delta_t = t_train[t + 1] - t_train[t]

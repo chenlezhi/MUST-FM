@@ -1,16 +1,61 @@
-# MS-UOT-FM Release
+# WFR-FM Release
 
-主要修改：
+## Structure
 
-4.17 更新：
-1. utils.py 后面新加相应函数
-2. train.py 后面新加相应函数
+- `src/`: training and evaluation code
+- `data/`: datasets used by the release scripts
+- `results/`: packaged checkpoints and run outputs
 
-4.20 更新：
-1. 实现根据数据尺度自适应进行多尺度 OT 计算
-2. 实现完全稀疏的 mass 计算
+## Run
 
+Install dependencies first:
 
-主要问题：
-1. 稀疏采样有上限（sample_from_ot_plan_sparse 函数）：torch.multinomial(probs, batch_size, replacement=True) 函数本身限制 probs 元素数量
-2. 实现最细尺度随机匹配（似乎能天然地解决前两个问题）
+```bash
+pip install -r requirements.txt
+```
+
+Then run a dataset-specific script from `src/`.
+
+Examples:
+
+```bash
+cd src
+
+python train_simulation.py
+python train_dygen.py
+python train_gaussian_1000d.py
+python train_emt.py
+python train_eb_5d.py
+python train_eb_50d.py
+python train_eb.py
+python train_cite_50d.py
+python train_weinreb.py
+```
+
+## Outputs
+
+Each script writes to:
+
+```text
+results/<experiment_name>/
+```
+
+Typical files:
+
+- `pretrain_best_model`
+- `evaluation_result.csv`
+- `action_result.csv`
+- `training_curve.png`
+- `sde_point_0.npy`
+- `sde_trajec_0.npy`
+- `sde_weight_0.npy`
+
+## Config
+
+All experiment settings are defined in:
+
+- `src/experiment_configs.py`
+
+The runner used by all scripts is:
+
+- `src/experiment_runner.py`

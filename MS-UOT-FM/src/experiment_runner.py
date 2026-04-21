@@ -50,7 +50,7 @@ def run_experiment(config):
     set_seeds(config.seed)
 
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
     data_path = resolve_repo_path(config.data_file)
     if not os.path.exists(data_path):
