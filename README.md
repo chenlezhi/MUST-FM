@@ -1,6 +1,6 @@
 # MS-UOT-FM
 
-Q1: 已完成，麻烦学长 check 一下实现:)
+Q1: 已完成
 
 - Q1_balance 为在一开始 3×3 平衡数据集上 benchmark 结果
 
