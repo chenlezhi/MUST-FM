@@ -1,7 +1,5 @@
 # MUST-FM
 
-**Author**: Lezhi Chen, Qiangwei Peng
-
 <h2> Enjoying MUST-FM? Help us grow by clicking the ⭐ button!</h2>
 
 ## Structure
