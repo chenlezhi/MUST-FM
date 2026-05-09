@@ -56,7 +56,7 @@ python train_weinreb.py
 
 ## Evaluation
 
- After training, the performance of distribution matching and mass matching will be automatically evaluated using $\mathbf{W}_1$ and $RME$ (i.e. $TMV$)(https://arxiv.org/abs/2505.11197). 
+ After training, the performance of distribution matching and mass matching will be automatically evaluated using $\mathbf{W}_1$ and $RME$ (i.e. $TMV$) (more information can be found in WFR-FM). 
 
 ## How to cite
 
