@@ -10,7 +10,7 @@
 - `data/`: datasets used by the release scripts
 - `results/`: packaged checkpoints and run outputs
 
-## Datasets
+## Dataset
 
 All datasets used in MUST-FM can be downloaded from https://zenodo.org/records/20095042
 
