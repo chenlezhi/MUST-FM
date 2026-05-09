@@ -10,6 +10,10 @@
 - `data/`: datasets used by the release scripts
 - `results/`: packaged checkpoints and run outputs
 
+## Datasets
+
+All datasets used in MUST-FM can be downloaded from
+
 ## Training MUST-FM
 
 MUST-FM uses a flexible configuration system, where users can specify the parameters used to train MUST-FM. The configurations are stored in the `src/experiment_configs.py`.
@@ -40,7 +44,7 @@ For example, to reproduce our results on the Mouse Blood Hematopoiesis dataset, 
     ),
 ```
 
-If you encounter  `CUDA out of memory` error, you may set the parameters `independent` to <True>. 
+If you encounter  `CUDA out of memory` error, you may set the parameters `independent` to `True`. 
 
 For training, simply run  `train_<your_data>.py`:
 
