@@ -1,96 +1,66 @@
 # MUST-FM
 
-**Author**: Zhenyi Zhang, Zihan Wang
+**Author**: Lezhi Chen, Qiangwei Peng
 
-This is the DeepRUOTv2 version of our previously published work [DeepRUOT](https://github.com/zhenyiizhang/DeepRUOT). We have improved the implementation of the original DeepRUOT version, offering a more user-friendly interface and establishing default parameters. We have computed results on more datasets presented in our latest work (https://arxiv.org/abs/2505.11197): Mouse Blood Hematopoiesis, Embryoid Body, Pancreatic $\beta$ -cell differentiation and  A549 EMT.
+<h2> Enjoying MUST-FM? Help us grow by clicking the ⭐ button!</h2>
 
-Based on the DeepRUOTv2 framework, we implement a suite of dynamical optimal transport methods:
+## Structure
 
-- **Dynamical Optimal Transport (OT)**: classical formulation without growth/death processes or stochastic effects.
-- **Unbalanced Dynamical OT**: extension of dynamical OT that accounts for growth and death processes, but without stochastic effects.
-- **Dynamical Schrödinger Bridge (SB)**: stochastic extension of dynamical OT without growth/death.
-- **Regularized Unbalanced Optimal Transport (Unbalanced Schrödinger Bridge)**: general formulation that incorporates both growth/death processes and stochasticity.
+- `src/`: training and evaluation code
+- `data/`: datasets used by the release scripts
+- `results/`: packaged checkpoints and run outputs
 
-Users can flexibly specify the desired model through configuration files to select the appropriate solver for their application. Furthermore, the following downstream analysis can be conducted ([view tutorial](https://deepruot.readthedocs.io/en/latest/notebook/analysis.html)):
-<br />
-<div align="left">
-  <a href="https://github.com/zhenyiizhang/DeepRUOTv2/">
-    <img src="figures/DeepRUOT_github.png" alt="Logo" height="350">
-  </a>
+## Training MUST-FM
 
-</div>
+MUST-FM uses a flexible configuration system, where users can specify the parameters used to train MUST-FM. The configurations are stored in the `src/experiment_configs.py`.
 
-If you are interested in further exploring cell-cell interactions from the data, we plan to release the code following the publication of our work.
-
-## Updated
-**(2025/08/26)** We conduct the following updates:
-* Added a new `use_mass` option to the configuration file. Setting this to `False` disables the growth term.
-* The `sigma` parameter can now be set to `0.0` to disable stochastic effects.
-* The calculated results can now be automatically evaluated.
-* Added a new notebook for downstream analysis at `evaluation/analysis.ipynb` ([view notebook](evaluation/analysis.ipynb), [view tutorial](https://deepruot.readthedocs.io/en/latest/notebook/analysis.html)). This script enables more advanced analyses, including data interpolation, inferring fate probabilities, and further gene-level studies. Raw data containing cell type and gene level information is required to perform these downstream analysis, sample data is provided in the following link ([view sample data](https://drive.google.com/drive/folders/1s2_hsS7WHVo03S4wgrn-w66iBtZPfdpS)).
-
-## Getting Started
-
-1. Clone this repository:
-
-```vim
-git clone https://github.com/zhenyiizhang/DeepRUOTv2
-```
-
-2. You can create a new conda environment (DeepRUOTv2) using
-
-```vim
-conda create -n DeepRUOTv2 python=3.10 ipykernel -y
-conda activate DeepRUOTv2
-```
-
-3. Install requirements
-```vim
-cd path_to_DeepRUOTv2
-pip install -r requirements.txt
-```
-
-## Training DeepRUOTv2
-
-DeepRUOTv2 uses a flexible configuration system, where users can specify the parameters used to train DeepRUOT. We provide example configurations used to train on four scRNA-seq datasets: Mouse Blood Hematopoiesis (50D), Embryoid Body (50D), Pancreatic $\beta$ -cell differentiation (30D) and  A549 EMT (10D). The configurations are stored in the `config/` folder.
-
-To train DeepRUOTv2 on your own dataset, you need to convert your own dataset to a csv file and store it in the `data/` folder. Specifically, the column `samples` refers to the biological time points starting from time 0, and it is recommended to normalize the time scales to a reasonable range. The following columns, starting from `x1`, refer to the gene expression features. After the dataset is prepared, modify these parts in the confuguration file:
+To train MUST-FM on your own dataset, you need to convert your own dataset to a csv file and store it in the `data/` folder. Specifically, the column `samples` refers to the biological time points starting from time 0, and it is recommended to normalize the time scales to a reasonable range. The following columns, starting from `x1`, refer to the gene expression features. The columns starting from `scale0` denote the multiscale annotation, while the columns starting from `prior0` denote the biological transition priors. The optional column `cell_weight` means the weight of each cells. After the dataset is prepared, add these parts in the confuguration file `src/experiment_configs.py`:
 
 ```yaml
-device: 'cuda' # device to run the model
-
-exp:
-  name: "my_experiment"     # Experiment name
-
-data:
-  file_path: "data.csv"     # Path to your dataset, your dataset should be prepared as a csv file
-  dim: 50                   # Data dimension
-
-model:
-  in_out_dim: 50 # Data dimension
+"<your_data_name>_<your_data_dimention>d": ExperimentConfig(
+        experiment_name="<your_data_name>_<your_data_dimention>d",
+        data_file="data/<your_data_name>.csv",
+        dim=<your_data_dimention>,
+        delta=<n>,  # [0,inf], The larger it is, the more it inhibits growth and tends toward unbalance; the smaller it is, the more it favors growth and may inhibit transport.
+        independent=<True/False>,
+        use_supervised_prior=<True/False>,
+    ),
 ```
 
-For other hyperparameters, we recommend using the same settings as `config/weinreb_config.yaml`. Note that the default setting for the hyperparameter `use_pinn`, which controls whether to update the score model in the final training phase, is set to False. Setting it to True may achieve better performance but will significantly increase training time. For more efficient training, we recommend setting it to False. The hyperparameter `use_mass` controls whether the growth term is used, and its default value is set to True. If you encounter  `CUDA out of memory` error, you may set the parameters `sample_size` and `score_batch_size` to smaller values. 
+For example, to reproduce our results on the Mouse Blood Hematopoiesis dataset, set:
+```yaml
+"weinreb_2d": ExperimentConfig(
+        experiment_name="weinreb_2d",
+        data_file="data/Weinreb_2d.csv",
+        dim=2,
+        delta=15.0,
+        batch_size=512,
+        independent=False,
+        use_supervised_prior=False,
+    ),
+```
 
-For training, simply specify the path to your configuration file, and run  `train_RUOT.py`:
+If you encounter  `CUDA out of memory` error, you may set the parameters `independent` to <True>. 
+
+For training, simply run  `train_<your_data>.py`:
 
 ```bash
-python train_RUOT.py --config config/<config_name>.yaml
+python train_<your_data>.py
 ```
 
 For example, to reproduce our results on the Mouse Blood Hematopoiesis dataset, run:
 
 ```bash
-python train_RUOT.py --config config/weinreb_config.yaml
+python train_weinreb.py
 ```
 
 ## Evaluation
 
- After training, the performance of distribution matching and mass matching will be automatically evaluated using $\mathbf{W}_1$ and $TMV$ (https://arxiv.org/abs/2505.11197). Model checkpoints will be generated in the `results/` directory: `model_final` and `score_final`, which can then be used to inference trajectories. We provide a Jupyter notebook to plot the learned results in `evaluation/plot.ipynb`. Downstream analysis can be conducted using the provided notebook in `evaluation/analysis.ipynb` ([view tutorial](https://deepruot.readthedocs.io/en/latest/notebook/analysis.html)).
+ After training, the performance of distribution matching and mass matching will be automatically evaluated using $\mathbf{W}_1$ and $RME$ (i.e. $TMV$)(https://arxiv.org/abs/2505.11197). 
 
 ## How to cite
 
-If you find this package helpful in your research, we would greatly appreciate it if you could consider citing our following work. We would first like to recommend our new package CytoBridge (https://github.com/zhenyiizhang/CytoBridge), a comprehensive and user-friendly toolkit for dynamical optimal transport and spatiotemproal transcriptomic data that we are actively developing.
+If you find this package helpful in your research, we would greatly appreciate it if you could consider citing our following work.
 
 The first two papers are our surveys.
 
@@ -99,28 +69,22 @@ The first two papers are our surveys.
 
 These papers present the core algorithm on which this package is built, as well as other relevant developments.
 
-- Zhenyi Zhang, Tiejun Li, and Peijie Zhou. “Learning stochastic dynamics from snapshots through regularized unbalanced optimal transport”. In: *ICLR 2025 Oral*.
-- Zhenyi Zhang, Zihan Wang, Yuhao Sun, Tiejun Li, and Peijie Zhou. “Modeling Cell Dynamics and Interactions with Unbalanced Mean Field Schrödinger Bridge”. In: *NeurIPS 2025*.
-- Dongyi Wang, Yuanwei Jiang, Zhenyi Zhang, Xiang Gu, Peijie Zhou, and Jian Sun. “Joint Velocity-Growth Flow Matching for Single-Cell Dynamics Modeling”. In: *NeurIPS 2025*.
-
-Additional related papers may be cited as needed.
-- Yuhao Sun, Zhenyi Zhang, Zihan Wang, Tiejun Li, and Peijie Zhou. “Variational Regularized Unbalanced Optimal Transport: Single Network, Least Action”. In: *NeurIPS 2025*.
+- Qiangwei Peng, Zihan Wang, Junda Ying, Yuhao Sun, Qing Nie, Lei Zhang, Tiejun Li, Peijie Zhou. “WFR-FM: Simulation-Free Dynamic Unbalanced Optimal Transport”. In: *ICLR 2026*.
 - Qiangwei Peng, Peijie Zhou, and Tiejun Li. “stVCR: Reconstructing spatio-temporal dynamics of cell development using optimal transport”. In: *Nature Methods*.
-
 
 ## Contact information
 
 If you encounter any issues while running the code, please feel free to contact us and we warmly welcome any discussions and suggestions:
 
-Zhenyi Zhang (zhenyizhang@stu.pku.edu.cn)
+Lezhi Chen (chenlezhi@stu.scu.edu.cn)
 
 ## License
-DeepRUOTv2 is licensed under the MIT License.
+MUST-FM is licensed under the MIT License.
 
 ```
 License
 
-Copyright (c) 2025 Zhenyi Zhang and Zihan Wang
+Copyright (c) 2026 Lezhi Chen and Qiangwei Peng
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
