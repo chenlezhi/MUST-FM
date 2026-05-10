@@ -42,6 +42,23 @@ For example, to reproduce our results on the Mouse Blood Hematopoiesis dataset, 
     ),
 ```
 
+Then, create `src/train_<your_data>.py`:
+```yaml
+from experiment_configs import EXPERIMENTS
+from experiment_runner import run_experiment
+
+if __name__ == "__main__":
+    run_experiment(EXPERIMENTS["<your_data_name>_<your_data_dimention>d"])
+```
+For example, to reproduce our results on the Mouse Blood Hematopoiesis dataset, create:
+```yaml
+from experiment_configs import EXPERIMENTS
+from experiment_runner import run_experiment
+
+if __name__ == "__main__":
+    run_experiment(EXPERIMENTS["weinreb_2d"])
+```
+
 If you encounter  `CUDA out of memory` error, you may set the parameters `independent` to `True`. 
 
 For training, simply run  `train_<your_data>.py`:
