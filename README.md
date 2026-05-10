@@ -59,8 +59,6 @@ if __name__ == "__main__":
     run_experiment(EXPERIMENTS["weinreb_2d"])
 ```
 
-If you encounter  `CUDA out of memory` error, you may set the parameters `independent` to `True`. 
-
 For training, simply run  `train_<your_data>.py`:
 
 ```bash
@@ -72,6 +70,8 @@ For example, to reproduce our results on the Mouse Blood Hematopoiesis dataset, 
 ```bash
 python train_weinreb.py
 ```
+
+If you encounter  `CUDA out of memory` error, you may set the parameters `independent` to `True`. 
 
 ## Evaluation
 
