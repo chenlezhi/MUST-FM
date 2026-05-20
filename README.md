@@ -86,7 +86,7 @@ If you find this package helpful in your research, we would greatly appreciate i
 These papers present the core algorithm on which this package is built, as well as other relevant developments.
 
 - Qiangwei Peng, Zihan Wang, Junda Ying, Yuhao Sun, Qing Nie, Lei Zhang, Tiejun Li, Peijie Zhou. “WFR-FM: Simulation-Free Dynamic Unbalanced Optimal Transport”. In: *ICLR 2026*.
-- Qiangwei Peng, Peijie Zhou, and Tiejun Li. “stVCR: Reconstructing spatio-temporal dynamics of cell development using optimal transport”. In: *Nature Methods*.
+- Qiangwei Peng, Peijie Zhou, and Tiejun Li. “stVCR: Spatiotemporal dynamics of single cells”. In: *Nature Methods*.
 
 ## Contact information
 
