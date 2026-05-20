@@ -81,6 +81,8 @@ If you encounter  `CUDA out of memory` error, you may set the parameters `indepe
 
 If you find this package helpful in your research, we would greatly appreciate it if you could consider citing our following work.
 
+- Qiangwei Peng, Lezhi Chen, Peijie Zhou. “Multiscale Supervised Unbalanced Optimal Transport Flow Matching”. In: *arXiv:2605.16529*.
+
 These papers present the core algorithm on which this package is built, as well as other relevant developments.
 
 - Qiangwei Peng, Zihan Wang, Junda Ying, Yuhao Sun, Qing Nie, Lei Zhang, Tiejun Li, Peijie Zhou. “WFR-FM: Simulation-Free Dynamic Unbalanced Optimal Transport”. In: *ICLR 2026*.
