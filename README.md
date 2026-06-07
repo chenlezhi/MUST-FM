@@ -1,4 +1,4 @@
-# MUST-FM
+# MUST-FM (Multiscale Supervised Unbalanced Optimal Transport Flow Matching)
 
 <h2> Enjoying MUST-FM? Help us grow by clicking the ⭐ button!</h2>
 
