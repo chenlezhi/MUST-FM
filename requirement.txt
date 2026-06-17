@@ -1,0 +1,7 @@
+numpy=2.10
+pandas 
+matplotlib 
+POT 
+torch 
+torchdiffeq 
+tqdm
