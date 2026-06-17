@@ -16,7 +16,7 @@ For more information, please check requirement.txt.
 
 ## Dataset
 
-All datasets used in MUST-FM can be downloaded from https://zenodo.org/records/20095042
+The processed datasets used in MUST-FM can be downloaded from https://zenodo.org/records/20095042
 
 ## Training MUST-FM
 
