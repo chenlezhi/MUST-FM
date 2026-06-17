@@ -6,7 +6,7 @@
 
 - Python = 3.10
 
-  For more information, please check requirement.txt
+For more information, please check requirement.txt
 
 ## Structure
 
