@@ -2,6 +2,12 @@
 
 <h2> Enjoying MUST-FM? Help us grow by clicking the ⭐ button!</h2>
 
+## Installation
+
+- Python = 3.10
+
+  For more information, please check requirement.txt
+
 ## Structure
 
 - `src/`: training and evaluation code
