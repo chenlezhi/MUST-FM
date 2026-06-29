@@ -98,4 +98,4 @@ These papers present the core algorithm on which this package is built, as well 
 
 If you encounter any issues while running the code, please feel free to contact us and we warmly welcome any discussions and suggestions:
 
-Lezhi Chen (chenlezhi_scu@outlook.com)
+Qiangwei Peng (qiangweipeng123@gmail.com) Lezhi Chen (chenlezhi_scu@outlook.com)
