@@ -1,6 +1,8 @@
 # Multiscale Supervised Unbalanced Optimal Transport Flow Matching (MUST-FM)
 
-**Enjoying MUST-FM? Help us grow by clicking the ⭐ button!**
+Enjoying MUST-FM? Help us grow by clicking the ⭐ button!
+
+![Algorithm Framework](docs/framework.png)
 
 ## Installation
 
