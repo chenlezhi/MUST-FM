@@ -10,6 +10,11 @@ Enjoying MUST-FM? Help us grow by clicking the ⭐ button!
 
 - Python = 3.10
 
+```bash
+conda create -n MOST python=3.10
+conda activate MOST
+```
+
 For more information, please check requirement.txt.
 
 ## Structure
