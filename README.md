@@ -9,8 +9,8 @@ Enjoying MUST-FM? Help us grow by clicking the ⭐ button!
 ## Installation
 
 ```bash
-conda create -n MOST python=3.10
-conda activate MOST
+conda create -n MUST-FM python=3.10
+conda activate MUST-FM
 pip install -r requirements.txt
 ```
 
