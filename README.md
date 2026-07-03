@@ -104,7 +104,7 @@ After training, the performance of distribution matching and mass matching will 
 
 ## How to cite
 
-If you find this package helpful in your research, we would greatly appreciate it if you could consider citing our following work.
+If you find this package helpful in your research, we would greatly appreciate it if you could consider citing our work.
 
 - Qiangwei Peng, Lezhi Chen, Peijie Zhou. “Multiscale Supervised Unbalanced Optimal Transport Flow Matching”. In: *arXiv:2605.16529*.
 
