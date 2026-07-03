@@ -8,12 +8,9 @@ Enjoying MUST-FM? Help us grow by clicking the ⭐ button!
 
 ## Installation
 
-- Python = 3.10
-
 ```bash
 conda create -n MOST python=3.10
 conda activate MOST
-
 pip install -r requirements.txt
 ```
 
