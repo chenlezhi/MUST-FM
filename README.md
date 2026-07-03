@@ -13,9 +13,9 @@ Enjoying MUST-FM? Help us grow by clicking the ⭐ button!
 ```bash
 conda create -n MOST python=3.10
 conda activate MOST
-```
 
-For more information, please check requirement.txt.
+pip install -r requirements.txt
+```
 
 ## Structure
 
