@@ -5,3 +5,4 @@ POT
 torch 
 torchdiffeq 
 tqdm
+scanpy
